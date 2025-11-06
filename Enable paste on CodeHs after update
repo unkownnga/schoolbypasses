@@ -1,0 +1,164 @@
+// ==UserScript==
+// @name         CodeHS Clean Paste + Anti Paste Log (unkownnga)
+// @namespace    http://tampermonkey.net/
+// @version      2.1
+// @description  lets you paste on codehs assignments + Blocks paste logging(only from codehs.com not your instructor)
+// @match        https://codehs.com/*
+// @match        https://*.codehs.com/*
+// @run-at       document-start
+// @grant        none
+// ==/UserScript==
+
+(function () {
+  'use strict';
+
+  // ---------- anti paste log ----------
+  const blockedEvents = new Set(['paste', 'copy', 'cut']);
+  function isAllowedHost() { return false; }
+
+  (function patchAddEvent() {
+    const origAdd = EventTarget.prototype.addEventListener;
+    EventTarget.prototype.addEventListener = function (type, listener, opts) {
+      try {
+        if (typeof type === 'string' && blockedEvents.has(type.toLowerCase()) && !isAllowedHost()) {
+          return;
+        }
+      } catch (e) {}
+      return origAdd.call(this, type, listener, opts);
+    };
+  })();
+
+  (function capturePaste() {
+    async function handlePasteCapture(e) {
+      if (isAllowedHost()) return;
+      try {
+        e.stopImmediatePropagation();
+        e.stopPropagation();
+        e.preventDefault();
+      } catch (err) {}
+    }
+    document.addEventListener('paste', handlePasteCapture, true);
+  })();
+
+  (function maskClipboardRead() {
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.readText === 'function') {
+        Object.defineProperty(navigator.clipboard, 'readText', {
+          configurable: true,
+          enumerable: true,
+          writable: true,
+          value: () => Promise.resolve('')
+        });
+      }
+    } catch (e) {}
+  })();
+
+  console.log('✅ Anti Paste Logger active (paste/copy/cut hidden from site)');
+
+  // ---------- wait + ui ----------
+  function waitFor(cond, callback, timeout = 15000) {
+    const start = Date.now();
+    const timer = setInterval(() => {
+      const result = cond();
+      if (result) {
+        clearInterval(timer);
+        callback(result);
+      } else if (Date.now() - start > timeout) {
+        clearInterval(timer);
+        console.warn('Editor not found');
+      }
+    }, 300);
+  }
+
+  function createPasteUI() {
+    const btn = document.createElement('button');
+    btn.textContent = '📝';
+    Object.assign(btn.style, {
+      position: 'fixed',
+      top: '10px',
+      right: '10px',
+      zIndex: '9999',
+      background: 'rgba(75, 139, 245, 0.2)',
+      color: '#fff',
+      border: '1px solid rgba(255,255,255,0.2)',
+      borderRadius: '6px',
+      padding: '5px 10px',
+      cursor: 'pointer',
+      fontFamily: 'sans-serif',
+      fontSize: '13px',
+      backdropFilter: 'blur(4px)',
+      transition: 'background 0.3s, transform 0.2s',
+    });
+    btn.onmouseenter = () => btn.style.background = 'rgba(75, 139, 245, 0.4)';
+    btn.onmouseleave = () => btn.style.background = 'rgba(75, 139, 245, 0.2)';
+    btn.onmousedown = () => btn.style.transform = 'scale(0.95)';
+    btn.onmouseup = () => btn.style.transform = 'scale(1)';
+    document.body.appendChild(btn);
+
+    const popup = document.createElement('div');
+    Object.assign(popup.style, {
+      position: 'fixed',
+      top: '50%',
+      left: '50%',
+      transform: 'translate(-50%, -50%)',
+      background: 'rgba(34, 34, 34, 0.85)',
+      color: 'white',
+      padding: '15px',
+      borderRadius: '10px',
+      zIndex: '10000',
+      display: 'none',
+      flexDirection: 'column',
+      width: '400px',
+      boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+      backdropFilter: 'blur(8px)',
+      border: '1px solid rgba(255,255,255,0.15)'
+    });
+    popup.innerHTML = `
+      <textarea id="pasteArea" style="width:100%;height:200px;background:rgba(0,0,0,0.3);color:#eee;border:none;border-radius:4px;padding:6px;font-family:monospace;resize:none;"></textarea>
+      <div style="margin-top:10px;text-align:right;">
+        <button id="insertBtn" style="background:rgba(75,139,245,0.3);color:white;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;">Insert</button>
+        <button id="cancelBtn" style="margin-left:8px;background:rgba(85,85,85,0.4);color:white;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;">Cancel</button>
+      </div>
+    `;
+    document.body.appendChild(popup);
+
+    btn.onclick = () => popup.style.display = 'flex';
+    popup.querySelector('#cancelBtn').onclick = () => popup.style.display = 'none';
+    popup.querySelector('#insertBtn').onclick = () => {
+      const text = popup.querySelector('#pasteArea').value;
+      insertCode(text);
+      popup.style.display = 'none';
+      popup.querySelector('#pasteArea').value = '';
+    };
+  }
+
+  function insertCode(code) {
+    const cleaned = code.replace(/\r\n/g, '\n');
+
+    try {
+      if (window.ace && document.querySelector('.ace_editor')) {
+        const ed = window.ace.edit(document.querySelector('.ace_editor'));
+        if (ed) {
+          ed.setValue(cleaned, -1);
+          console.log('✅ Inserted into Ace Editor');
+          return;
+        }
+      }
+    } catch (e) {}
+
+    try {
+      if (window.monaco && window.monaco.editor && window.monaco.editor.getModels) {
+        const model = window.monaco.editor.getModels()[0];
+        if (model) {
+          model.setValue(cleaned);
+          console.log('✅ Inserted into Monaco Editor');
+          return;
+        }
+      }
+    } catch (e) {}
+
+    alert('⚠️ Editor not found — make sure it’s open first.');
+  }
+
+  waitFor(() => document.querySelector('.ace_editor') || (window.monaco && window.monaco.editor), createPasteUI);
+})();
