@@ -2,7 +2,7 @@
 // @name         CodeHS Clean Paste + Anti Paste Log (unkownnga)
 // @namespace    http://tampermonkey.net/
 // @version      2.1
-// @description  lets you paste on codehs assignments + Blocks paste logging(only from codehs.com not your instructor)
+// @description  LOCATED AT TOP RIGHT OF YOUR SCREEN - lets you paste on codehs assignments + Blocks paste logging(only from codehs.com not your instructor)
 // @match        https://codehs.com/*
 // @match        https://*.codehs.com/*
 // @run-at       document-start
